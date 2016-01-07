@@ -1,4 +1,4 @@
-// +build !appengine
+// +build appengine
 
 // Copyright (c) 2012 The gocql Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
@@ -8,6 +8,7 @@ package gocql
 
 import (
 	"errors"
+	"golang.org/x/net/context"
 	"sync"
 	"time"
 
@@ -103,8 +104,8 @@ func NewCluster(hosts ...string) *ClusterConfig {
 
 // CreateSession initializes the cluster based on this config and returns a
 // session object that can be used to interact with the database.
-func (cfg *ClusterConfig) CreateSession() (*Session, error) {
-	return NewSession(*cfg)
+func (cfg *ClusterConfig) CreateSession(contextOfAppEngine context.Context) (*Session, error) {
+	return NewSession(*cfg, contextOfAppEngine)
 }
 
 var (

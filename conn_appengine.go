@@ -1,8 +1,4 @@
-// +build !appengine
-
-// Copyright (c) 2012 The gocql Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
+// +build appengine
 
 package gocql
 
@@ -11,6 +7,8 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"golang.org/x/net/context"
+	"google.golang.org/appengine/socket"
 	"io"
 	"io/ioutil"
 	"log"
@@ -74,14 +72,15 @@ type SslOptions struct {
 }
 
 type ConnConfig struct {
-	ProtoVersion  int
-	CQLVersion    string
-	Timeout       time.Duration
-	NumStreams    int
-	Compressor    Compressor
-	Authenticator Authenticator
-	Keepalive     time.Duration
-	tlsConfig     *tls.Config
+	contextOfAppEngine context.Context
+	ProtoVersion       int
+	CQLVersion         string
+	Timeout            time.Duration
+	NumStreams         int
+	Compressor         Compressor
+	Authenticator      Authenticator
+	Keepalive          time.Duration
+	tlsConfig          *tls.Config
 }
 
 type ConnErrorHandler interface {
@@ -98,7 +97,7 @@ var TimeoutLimit int64 = 10
 // queries, but users are usually advised to use a more reliable, higher
 // level API.
 type Conn struct {
-	conn    net.Conn
+	conn    *socket.Conn
 	r       *bufio.Reader
 	timeout time.Duration
 
@@ -124,22 +123,22 @@ type Conn struct {
 // Connect establishes a connection to a Cassandra node.
 // You must also call the Serve method before you can execute any queries.
 func Connect(addr string, cfg ConnConfig, errorHandler ConnErrorHandler) (*Conn, error) {
-	var (
-		err  error
-		conn net.Conn
-	)
+	// var (
+	// 	err  error
+	// 	conn net.Conn
+	// )
 
-	dialer := &net.Dialer{
-		Timeout: cfg.Timeout,
-	}
+	// dialer := &net.Dialer{
+	// 	Timeout: cfg.Timeout,
+	// }
 
-	if cfg.tlsConfig != nil {
-		// the TLS config is safe to be reused by connections but it must not
-		// be modified after being used.
-		conn, err = tls.DialWithDialer(dialer, "tcp", addr, cfg.tlsConfig)
-	} else {
-		conn, err = dialer.Dial("tcp", addr)
-	}
+	// if cfg.tlsConfig != nil {
+	// 	// the TLS config is safe to be reused by connections but it must not
+	// 	// be modified after being used.
+	// 	conn, err = tls.DialWithDialer(dialer, "tcp", addr, cfg.tlsConfig)
+	// } else {
+	conn, err := socket.Dial(cfg.contextOfAppEngine, "tcp", addr)
+	// }
 
 	if err != nil {
 		return nil, err
@@ -800,16 +799,9 @@ func (c *Conn) executeBatch(batch *Batch) error {
 }
 
 func (c *Conn) setKeepalive(d time.Duration) error {
-	if tc, ok := c.conn.(*net.TCPConn); ok {
-		err := tc.SetKeepAlivePeriod(d)
-		if err != nil {
-			return err
-		}
 
-		return tc.SetKeepAlive(true)
-	}
+	return c.conn.KeepAlive()
 
-	return nil
 }
 
 type inflightPrepare struct {

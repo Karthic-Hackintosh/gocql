@@ -1,4 +1,4 @@
-// +build !appengine
+// +build appengine
 // Copyright (c) 2012 The gocql Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
@@ -10,13 +10,13 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/golang/groupcache/lru"
+	"golang.org/x/net/context"
 	"io"
 	"strings"
 	"sync"
 	"time"
 	"unicode"
-
-	"github.com/golang/groupcache/lru"
 )
 
 // Session is the interface used by users to interact with the database.
@@ -46,7 +46,7 @@ type Session struct {
 }
 
 // NewSession wraps an existing Node.
-func NewSession(cfg ClusterConfig) (*Session, error) {
+func NewSession(cfg ClusterConfig, contextOfAppEngine context.Context) (*Session, error) {
 	//Check that hosts in the ClusterConfig is not empty
 	if len(cfg.Hosts) < 1 {
 		return nil, ErrNoHosts
@@ -61,7 +61,7 @@ func NewSession(cfg ClusterConfig) (*Session, error) {
 		cfg.NumStreams = maxStreams
 	}
 
-	pool, err := cfg.ConnPoolType(&cfg)
+	pool, err := cfg.ConnPoolType(&cfg, contextOfAppEngine)
 	if err != nil {
 		return nil, err
 	}

@@ -1,4 +1,4 @@
-// +build !appengine
+// +build appengine
 // Copyright (c) 2012 The gocql Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
@@ -10,6 +10,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"golang.org/x/net/context"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -112,17 +113,18 @@ type SetPartitioner interface {
 }
 
 //NewPoolFunc is the type used by ClusterConfig to create a pool of a specific type.
-type NewPoolFunc func(*ClusterConfig) (ConnectionPool, error)
+type NewPoolFunc func(*ClusterConfig, context.Context) (ConnectionPool, error)
 
 //SimplePool is the current implementation of the connection pool inside gocql. This
 //pool is meant to be a simple default used by gocql so users can get up and running
 //quickly.
 type SimplePool struct {
-	cfg      *ClusterConfig
-	hostPool *RoundRobin
-	connPool map[string]*RoundRobin
-	conns    map[*Conn]struct{}
-	keyspace string
+	contextOfAppEngine context.Context
+	cfg                *ClusterConfig
+	hostPool           *RoundRobin
+	connPool           map[string]*RoundRobin
+	conns              map[*Conn]struct{}
+	keyspace           string
 
 	hostMu sync.RWMutex
 	// this is the set of current hosts which the pool will attempt to connect to
@@ -172,16 +174,17 @@ func setupTLSConfig(sslOpts *SslOptions) (*tls.Config, error) {
 
 //NewSimplePool is the function used by gocql to create the simple connection pool.
 //This is the default if no other pool type is specified.
-func NewSimplePool(cfg *ClusterConfig) (ConnectionPool, error) {
+func NewSimplePool(cfg *ClusterConfig, contextOfAppEngine context.Context) (ConnectionPool, error) {
 	pool := &SimplePool{
-		cfg:          cfg,
-		hostPool:     NewRoundRobin(),
-		connPool:     make(map[string]*RoundRobin),
-		conns:        make(map[*Conn]struct{}),
-		quitWait:     make(chan bool),
-		cFillingPool: make(chan int, 1),
-		keyspace:     cfg.Keyspace,
-		hosts:        make(map[string]*HostInfo),
+		contextOfAppEngine: contextOfAppEngine,
+		cfg:                cfg,
+		hostPool:           NewRoundRobin(),
+		connPool:           make(map[string]*RoundRobin),
+		conns:              make(map[*Conn]struct{}),
+		quitWait:           make(chan bool),
+		cFillingPool:       make(chan int, 1),
+		keyspace:           cfg.Keyspace,
+		hosts:              make(map[string]*HostInfo),
 	}
 
 	for _, host := range cfg.Hosts {
@@ -216,14 +219,15 @@ func NewSimplePool(cfg *ClusterConfig) (ConnectionPool, error) {
 func (c *SimplePool) connect(addr string) error {
 
 	cfg := ConnConfig{
-		ProtoVersion:  c.cfg.ProtoVersion,
-		CQLVersion:    c.cfg.CQLVersion,
-		Timeout:       c.cfg.Timeout,
-		NumStreams:    c.cfg.NumStreams,
-		Compressor:    c.cfg.Compressor,
-		Authenticator: c.cfg.Authenticator,
-		Keepalive:     c.cfg.SocketKeepalive,
-		tlsConfig:     c.tlsConfig,
+		contextOfAppEngine: c.contextOfAppEngine,
+		ProtoVersion:       c.cfg.ProtoVersion,
+		CQLVersion:         c.cfg.CQLVersion,
+		Timeout:            c.cfg.Timeout,
+		NumStreams:         c.cfg.NumStreams,
+		Compressor:         c.cfg.Compressor,
+		Authenticator:      c.cfg.Authenticator,
+		Keepalive:          c.cfg.SocketKeepalive,
+		tlsConfig:          c.tlsConfig,
 	}
 
 	conn, err := Connect(addr, cfg, c)
